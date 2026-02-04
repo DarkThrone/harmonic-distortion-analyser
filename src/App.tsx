@@ -106,7 +106,7 @@ function computeSpectrum(
   db: number;
 }> {
   const n = waveform.length;
-  const fundamentalBin = 6;
+  const fundamentalBin = 4;
   const spectrum = [];
 
   for (let h = 0; h <= numHarmonics; h++) {
@@ -190,17 +190,24 @@ function App() {
       ctx.fillStyle = "#0f172a";
       ctx.fillRect(0, 0, width, height);
 
+      // Add padding
+      const paddingTop = 10;
+      const paddingBottom = 10;
+      const plotHeight = height - paddingTop - paddingBottom;
+
       ctx.strokeStyle = "#1e293b";
       ctx.lineWidth = 1;
       for (let y = 0; y <= 4; y++) {
         ctx.beginPath();
-        ctx.moveTo(0, (y * height) / 4);
-        ctx.lineTo(width, (y * height) / 4);
+        const yPos = paddingTop + (y * plotHeight) / 4;
+        ctx.moveTo(0, yPos);
+        ctx.lineTo(width, yPos);
         ctx.stroke();
       }
 
-      // Scale factor for [-6, 6] range (instead of [-1, 1])
-      const scale = (height * 0.4) / 6;
+      // Scale factor for [-2, 2] range (instead of [-1, 1])
+      const scale = (plotHeight * 0.4) / 2;
+      const centerY = paddingTop + plotHeight / 2;
 
       // Draw reference waveform if provided
       if (referenceData) {
@@ -211,7 +218,7 @@ function App() {
         ctx.beginPath();
         for (let i = 0; i < referenceData.length; i++) {
           const x = i * step;
-          const y = height / 2 - referenceData[i] * scale;
+          const y = centerY - referenceData[i] * scale;
           if (i === 0) ctx.moveTo(x, y);
           else ctx.lineTo(x, y);
         }
@@ -219,7 +226,7 @@ function App() {
         ctx.setLineDash([]);
       }
 
-      // Show all 6 cycles
+      // Show all 4 cycles
       const displayData = data;
 
       ctx.strokeStyle = color;
@@ -229,7 +236,7 @@ function App() {
       const step = width / displayData.length;
       for (let i = 0; i < displayData.length; i++) {
         const x = i * step;
-        const y = height / 2 - displayData[i] * scale;
+        const y = centerY - displayData[i] * scale;
         if (i === 0) ctx.moveTo(x, y);
         else ctx.lineTo(x, y);
       }
@@ -243,9 +250,9 @@ function App() {
 
       ctx.textAlign = "right";
       ctx.font = "12px sans-serif";
-      ctx.fillText("+6", width - 8, height / 2 - height * 0.4 + 5);
-      ctx.fillText("0", width - 8, height / 2 + 5);
-      ctx.fillText("-6", width - 8, height / 2 + height * 0.4 + 5);
+      ctx.fillText("+2", width - 8, centerY - plotHeight * 0.4 + 5);
+      ctx.fillText("0", width - 8, centerY + 5);
+      ctx.fillText("-2", width - 8, centerY + plotHeight * 0.4 + 5);
 
       ctx.font = "14px sans-serif";
 
@@ -262,10 +269,10 @@ function App() {
         if (sampleIndex >= 0 && sampleIndex < data.length) {
           const amplitude = data[sampleIndex];
           const x = sampleIndex * step;
-          const y = height / 2 - amplitude * scale;
+          const y = centerY - amplitude * scale;
 
-          // Calculate time in cycles (6 cycles total)
-          const timeInCycles = (sampleIndex / data.length) * 6;
+          // Calculate time in cycles (4 cycles total)
+          const timeInCycles = (sampleIndex / data.length) * 4;
 
           // Draw vertical crosshair line
           ctx.strokeStyle = "rgba(255, 255, 255, 0.5)";
@@ -344,47 +351,52 @@ function App() {
   function TransferCurve({
     clipFn,
     drive,
+    knee,
     color,
+    height = 250,
   }: {
     clipFn: ClipFn;
     drive: number;
+    knee: number;
     color: string;
+    height?: number;
   }) {
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
     useEffect(() => {
       const canvas = canvasRef.current!;
       const ctx = canvas.getContext("2d")!;
-      const size = 250;
+      const width = canvas.width;
+      const h = canvas.height;
 
       ctx.fillStyle = "#0f172a";
-      ctx.fillRect(0, 0, size, size);
+      ctx.fillRect(0, 0, width, h);
 
       ctx.strokeStyle = "#1e293b";
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.moveTo(0, size / 2);
-      ctx.lineTo(size, size / 2);
-      ctx.moveTo(size / 2, 0);
-      ctx.lineTo(size / 2, size);
+      ctx.moveTo(0, h / 2);
+      ctx.lineTo(width, h / 2);
+      ctx.moveTo(width / 2, 0);
+      ctx.lineTo(width / 2, h);
       ctx.stroke();
 
       // Linear reference line
       ctx.strokeStyle = "#334155";
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.moveTo(0, size);
-      ctx.lineTo(size, 0);
+      ctx.moveTo(0, h);
+      ctx.lineTo(width, 0);
       ctx.stroke();
 
       // Transfer curve
       ctx.strokeStyle = color;
       ctx.lineWidth = 3;
       ctx.beginPath();
-      for (let x = 0; x < size; x++) {
-        const input = (x / size) * 4 - 2;
-        const output = clipFn(input);
-        const y = size / 2 - (output * size) / 4;
+      for (let x = 0; x < width; x++) {
+        const input = (x / width) * 4 - 2;
+        const output = clipFn(input, knee);
+        const y = h / 2 - (output * h) / 4;
         if (x === 0) {
           ctx.moveTo(x, y);
         } else {
@@ -400,21 +412,26 @@ function App() {
       ctx.fillText("Output", 8, 20);
 
       ctx.textAlign = "center";
-      ctx.fillText("Input →", size / 2, size - 8);
+      ctx.fillText("Input →", width / 2, h - 8);
 
       // Add scale markers
       ctx.font = "12px sans-serif";
       ctx.textAlign = "left";
-      ctx.fillText("-2", 5, size - 5);
+      ctx.fillText("-2", 5, h - 5);
 
       ctx.textAlign = "right";
-      ctx.fillText("+2", size - 5, 15);
-      ctx.fillText("+2", size - 5, size / 2 - 5);
-      ctx.fillText("-2", size - 5, size - 5);
-    }, [clipFn, drive, color]);
+      ctx.fillText("+2", width - 5, 15);
+      ctx.fillText("+2", width - 5, h / 2 - 5);
+      ctx.fillText("-2", width - 5, h - 5);
+    }, [clipFn, drive, color, height, knee]);
 
     return (
-      <canvas ref={canvasRef} width={250} height={250} className="rounded-lg" />
+      <canvas
+        ref={canvasRef}
+        width={200}
+        height={height}
+        className="rounded-lg"
+      />
     );
   }
 
@@ -477,25 +494,11 @@ function App() {
       const paddingLeft = 20;
       const paddingRight = 50;
 
-      // Define dBFS scale
-      const maxDb = 30;
-      const minDb = -80;
-
       // Calculate chart area
       const chartHeight = h - paddingTop - paddingBottom;
 
-      // Position 0dB axis at ~25% from top (30dB range above, 80dB range below)
-      const axisY = paddingTop + chartHeight * 0.25;
-      const topSectionHeight = chartHeight * 0.25; // 0 to +30 dB
-      const bottomSectionHeight = chartHeight * 0.75; // -80 to 0 dB
-
-      // Draw 0 dB axis line
-      ctx.strokeStyle = "#475569";
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(paddingLeft, axisY);
-      ctx.lineTo(width - paddingRight, axisY);
-      ctx.stroke();
+      // Find max magnitude for scaling
+      const maxMag = max(...spectrum.map((s) => s.magnitude));
 
       // Draw bars for harmonics 0-15 (including DC component)
       const harmonics = spectrum.slice(0, 16);
@@ -517,26 +520,17 @@ function App() {
 
       harmonics.forEach((s, i) => {
         const x = paddingLeft + i * barWidth;
-        const db = s?.db;
+        const magnitude = s?.magnitude;
 
-        // Skip if db is invalid (null, undefined, NaN, or Infinity)
-        if (db == null || !isFinite(db)) {
+        // Skip if magnitude is invalid (null, undefined, NaN, or Infinity)
+        if (magnitude == null || !isFinite(magnitude)) {
           return;
         }
 
-        let y, barHeight;
-
-        if (db >= 0) {
-          // Positive dB: scale from 0 to +30 dB
-          const normalizedDb = min(db, maxDb);
-          barHeight = (normalizedDb / maxDb) * topSectionHeight;
-          y = axisY - barHeight;
-        } else {
-          // Negative dB: scale from 0 to -80 dB
-          const normalizedDb = max(db, minDb);
-          barHeight = (abs(normalizedDb) / abs(minDb)) * bottomSectionHeight;
-          y = axisY;
-        }
+        // Calculate bar height as percentage of max
+        const percentage = maxMag > 0 ? (magnitude / maxMag) * 100 : 0;
+        const barHeight = (percentage / 100) * chartHeight;
+        const y = paddingTop + chartHeight - barHeight;
 
         // Ensure barHeight is valid before drawing
         if (!isFinite(barHeight) || barHeight < 0) {
@@ -547,15 +541,15 @@ function App() {
         const isHovered = i === hoveredBar;
 
         // Bar
-        ctx.fillStyle = abs(db) > -70 ? color : "#334155";
-        ctx.globalAlpha = isHovered ? 1 : abs(db) > -70 ? 0.8 : 0.3;
-        ctx.fillRect(x + 4, y, barWidth - 8, abs(barHeight));
+        ctx.fillStyle = barHeight > 2 ? color : "#334155";
+        ctx.globalAlpha = isHovered ? 1 : barHeight > 2 ? 0.8 : 0.3;
+        ctx.fillRect(x + 4, y, barWidth - 8, barHeight);
 
         // Highlight hovered bar with border
         if (isHovered) {
           ctx.strokeStyle = "#ffffff";
           ctx.lineWidth = 2;
-          ctx.strokeRect(x + 4, y, barWidth - 8, abs(barHeight));
+          ctx.strokeRect(x + 4, y, barWidth - 8, barHeight);
         }
 
         ctx.globalAlpha = 1;
@@ -577,23 +571,24 @@ function App() {
       ctx.fillStyle = "#64748b";
       ctx.font = "14px sans-serif";
       ctx.textAlign = "left";
-      ctx.fillText("dBFS", paddingLeft, 18);
+      ctx.fillText("Magnitude", paddingLeft, 18);
 
       ctx.textAlign = "center";
       ctx.fillText("Harmonic Number →", width / 2, h - 10);
 
-      // Add dB scale
+      // Add percentage scale
       ctx.textAlign = "right";
       ctx.font = "12px sans-serif";
-      ctx.fillText("0 dB", width - 5, axisY + 5);
-      ctx.fillText(`+${maxDb}`, width - 5, paddingTop + 5);
-      ctx.fillText(`${minDb}`, width - 5, paddingTop + chartHeight + 5);
+      ctx.fillText("100%", width - 5, paddingTop + 5);
+      ctx.fillText("50%", width - 5, paddingTop + chartHeight / 2 + 5);
+      ctx.fillText("0%", width - 5, paddingTop + chartHeight + 5);
 
       // Draw tooltip for hovered bar
       if (hoveredBar !== null && mousePos) {
         const s = harmonics[hoveredBar];
-        if (s && s.db != null && isFinite(s.db)) {
-          const tooltipText = `H${s.harmonic}: ${s.db.toFixed(2)} dBFS`;
+        if (s && s.magnitude != null && isFinite(s.magnitude)) {
+          const percentage = maxMag > 0 ? (s.magnitude / maxMag) * 100 : 0;
+          const tooltipText = `H${s.harmonic}: ${percentage.toFixed(1)}%`;
           const tooltipMag = `Mag: ${s.magnitude.toFixed(4)}`;
 
           // Measure text for tooltip background
@@ -652,20 +647,25 @@ function App() {
     spectrum,
     color,
   }: {
-    spectrum: Array<{ db: number; harmonic: number }>;
+    spectrum: Array<{ magnitude: number; harmonic: number }>;
     color: string;
   }) {
+    const maxMag = max(...spectrum.map((s) => s.magnitude));
+
     return (
       <div className="text-xs font-mono">
         <div className="grid grid-cols-8 gap-1">
-          {spectrum.slice(0, 8).map((s, i) => (
-            <div key={i} className="text-center">
-              <div className="text-slate-500">H{s.harmonic}</div>
-              <div style={{ color: s.db > -80 ? color : "#475569" }}>
-                {s.db > -80 ? s.db.toFixed(1) : "—"}
+          {spectrum.slice(0, 8).map((s, i) => {
+            const percentage = maxMag > 0 ? (s.magnitude / maxMag) * 100 : 0;
+            return (
+              <div key={i} className="text-center">
+                <div className="text-slate-500">H{s.harmonic}</div>
+                <div style={{ color: percentage > 1 ? color : "#475569" }}>
+                  {percentage > 1 ? `${percentage.toFixed(1)}%` : "—"}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     );
@@ -701,12 +701,26 @@ function App() {
 
     // Generate original unclipped sine wave
     const originalWaveform = useMemo(() => {
-      return generateWaveform(clippers.none.fn, 1024, 6, drive, knee);
-    }, [drive, knee]);
-    const baselineWaveform = generateWaveform(baseline.fn, 1024, 6, drive);
+      return generateWaveform(clippers.none.fn, 1024, 4, drive);
+    }, [drive]);
+
+    const baselineWaveform = generateWaveform(
+      baseline.fn,
+      1024,
+      4,
+      drive,
+      knee,
+    );
+
     const waveforms = useMemo(() => {
       const results = selectedClippers.map((key) => {
-        const waveform = generateWaveform(clippers[key].fn, 1024, 6, drive);
+        const waveform = generateWaveform(
+          clippers[key].fn,
+          1024,
+          4,
+          drive,
+          knee,
+        );
         const spectrum = computeSpectrum(waveform);
         const distortion = computeResidual(waveform, baselineWaveform);
         const residualRMS = computeRootMeanSquare(distortion);
@@ -721,7 +735,7 @@ function App() {
         };
       });
       return results;
-    }, [selectedClippers, drive]);
+    }, [selectedClippers, drive, knee]);
 
     return (
       <div className="min-h-screen bg-slate-950 text-slate-100 p-6">
@@ -819,7 +833,7 @@ function App() {
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-[250px_1fr] gap-4">
+                  <div className="grid grid-cols-[200px_1fr] gap-4">
                     <div>
                       <p className="text-xs text-slate-500 mb-1">
                         Transfer Function
@@ -827,30 +841,63 @@ function App() {
                       <TransferCurve
                         clipFn={clipper.fn}
                         drive={drive}
+                        knee={knee}
                         color={colors[i % colors.length]}
+                        height={215}
                       />
                     </div>
                     <div>
                       <p className="text-xs text-slate-500 mb-1">
-                        Waveform (6 cycles)
+                        Waveform (4 cycles)
                       </p>
                       <WaveformCanvas
                         data={data}
                         referenceData={originalWaveform}
                         color={colors[i % colors.length]}
-                        height={250}
+                        height={215}
                       />
                     </div>
                   </div>
-                  <div>
-                    <p className="text-xs text-slate-500 mb-1">Distortion</p>
-                    <WaveformCanvas
-                      data={distortion}
-                      referenceData={originalWaveform}
-                      color={colors[i % colors.length]}
-                      height={250}
-                    />
-                  </div>
+                  {key !== "none" && (
+                    <div className="grid grid-cols-[200px_1fr] gap-4">
+                      <div>
+                        <p className="text-xs text-slate-500 mb-1">
+                          Residual RMS
+                        </p>
+                        <div
+                          className="rounded-lg flex flex-col items-center justify-center"
+                          style={{
+                            backgroundColor: "#0f172a",
+                            height: "215px",
+                          }}
+                        >
+                          <div className="text-center">
+                            <div
+                              className="text-5xl font-bold mb-2"
+                              style={{ color: colors[i % colors.length] }}
+                            >
+                              {(20 * log10(residualRMS)).toFixed(1)}
+                            </div>
+                            <div className="text-lg text-slate-400">dBFS</div>
+                            <div className="text-xs text-slate-500 mt-2">
+                              {residualRMS.toFixed(4)}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      <div>
+                        <p className="text-xs text-slate-500 mb-1">
+                          Distortion
+                        </p>
+                        <WaveformCanvas
+                          data={distortion}
+                          referenceData={originalWaveform}
+                          color={colors[i % colors.length]}
+                          height={215}
+                        />
+                      </div>
+                    </div>
+                  )}
                   <div className="mt-4">
                     <p className="text-xs text-slate-500 mb-1">
                       Harmonic Content
