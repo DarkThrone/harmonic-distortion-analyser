@@ -35,12 +35,12 @@ const baseline: Clipper = {
 const clippers: Record<string, Clipper> = {
   none: {
     name: "Clean",
-    fn: (x) => x,
+    fn: knee((x) => x),
     desc: "Pure sine — single harmonic",
   },
   hard: {
     name: "Hard Clip",
-    fn: (x) => max(-1, min(1, x)),
+    fn: knee((x) => max(-1, min(1, x))),
     desc: "Abrupt cutoff — strong odd harmonics",
   },
   softTanh: {
@@ -66,13 +66,14 @@ function generateWaveform(
   samples = 1024,
   frequency = 4,
   drive = 1,
+  knee = 0,
 ): Array<number> {
   const output = new Array(samples);
 
   for (let i = 0; i < samples; i++) {
     const t = i / samples;
     const sine = sin(2 * PI * frequency * t);
-    output[i] = clipFn(sine * drive);
+    output[i] = clipFn(sine * drive, knee);
   }
 
   return output;
@@ -151,6 +152,34 @@ function App() {
     height: number;
   }) {
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
+    const [mousePos, setMousePos] = useState<{ x: number; y: number } | null>(
+      null,
+    );
+
+    useEffect(() => {
+      const canvas = canvasRef.current!;
+
+      const handleMouseMove = (e: MouseEvent) => {
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        const x = (e.clientX - rect.left) * scaleX;
+        const y = (e.clientY - rect.top) * scaleY;
+        setMousePos({ x, y });
+      };
+
+      const handleMouseLeave = () => {
+        setMousePos(null);
+      };
+
+      canvas.addEventListener("mousemove", handleMouseMove);
+      canvas.addEventListener("mouseleave", handleMouseLeave);
+
+      return () => {
+        canvas.removeEventListener("mousemove", handleMouseMove);
+        canvas.removeEventListener("mouseleave", handleMouseLeave);
+      };
+    }, []);
 
     useEffect(() => {
       const canvas = canvasRef.current!;
@@ -222,14 +251,91 @@ function App() {
 
       ctx.textAlign = "center";
       ctx.fillText("Time →", width / 2, height - 8);
-    }, [data, referenceData, color, height]);
+
+      // Draw crosshair and tooltip for hovered point
+      if (mousePos) {
+        const step = width / data.length;
+
+        // Find closest sample index
+        const sampleIndex = Math.round(mousePos.x / step);
+
+        if (sampleIndex >= 0 && sampleIndex < data.length) {
+          const amplitude = data[sampleIndex];
+          const x = sampleIndex * step;
+          const y = height / 2 - amplitude * scale;
+
+          // Calculate time in cycles (6 cycles total)
+          const timeInCycles = (sampleIndex / data.length) * 6;
+
+          // Draw vertical crosshair line
+          ctx.strokeStyle = "rgba(255, 255, 255, 0.5)";
+          ctx.lineWidth = 1;
+          ctx.setLineDash([4, 4]);
+          ctx.beginPath();
+          ctx.moveTo(x, 0);
+          ctx.lineTo(x, height);
+          ctx.stroke();
+          ctx.setLineDash([]);
+
+          // Draw point on waveform
+          ctx.fillStyle = color;
+          ctx.beginPath();
+          ctx.arc(x, y, 4, 0, 2 * PI);
+          ctx.fill();
+          ctx.strokeStyle = "#ffffff";
+          ctx.lineWidth = 2;
+          ctx.stroke();
+
+          // Draw tooltip
+          const tooltipText = `Time: ${timeInCycles.toFixed(3)} cycles`;
+          const tooltipAmp = `Amplitude: ${amplitude.toFixed(3)}`;
+
+          ctx.font = "14px sans-serif";
+          const textWidth = max(
+            ctx.measureText(tooltipText).width,
+            ctx.measureText(tooltipAmp).width,
+          );
+          const tooltipWidth = textWidth + 20;
+          const tooltipHeight = 50;
+
+          // Position tooltip near mouse, but keep it in bounds
+          let tooltipX = mousePos.x + 15;
+          let tooltipY = mousePos.y - 10;
+
+          if (tooltipX + tooltipWidth > width - 10) {
+            tooltipX = mousePos.x - tooltipWidth - 15;
+          }
+          if (tooltipY < 10) {
+            tooltipY = 10;
+          }
+          if (tooltipY + tooltipHeight > height - 10) {
+            tooltipY = height - tooltipHeight - 10;
+          }
+
+          // Draw tooltip background
+          ctx.fillStyle = "rgba(15, 23, 42, 0.95)";
+          ctx.strokeStyle = color;
+          ctx.lineWidth = 2;
+          ctx.fillRect(tooltipX, tooltipY, tooltipWidth, tooltipHeight);
+          ctx.strokeRect(tooltipX, tooltipY, tooltipWidth, tooltipHeight);
+
+          // Draw tooltip text
+          ctx.fillStyle = "#ffffff";
+          ctx.textAlign = "left";
+          ctx.fillText(tooltipText, tooltipX + 10, tooltipY + 22);
+          ctx.fillStyle = "#94a3b8";
+          ctx.font = "12px sans-serif";
+          ctx.fillText(tooltipAmp, tooltipX + 10, tooltipY + 38);
+        }
+      }
+    }, [data, referenceData, color, height, mousePos]);
 
     return (
       <canvas
         ref={canvasRef}
         width={1000}
         height={height}
-        className="rounded-lg w-full"
+        className="rounded-lg w-full cursor-crosshair"
       />
     );
   }
@@ -323,6 +429,36 @@ function App() {
     height: number;
   }) {
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
+    const [hoveredBar, setHoveredBar] = useState<number | null>(null);
+    const [mousePos, setMousePos] = useState<{ x: number; y: number } | null>(
+      null,
+    );
+
+    useEffect(() => {
+      const canvas = canvasRef.current!;
+
+      const handleMouseMove = (e: MouseEvent) => {
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        const x = (e.clientX - rect.left) * scaleX;
+        const y = (e.clientY - rect.top) * scaleY;
+        setMousePos({ x, y });
+      };
+
+      const handleMouseLeave = () => {
+        setHoveredBar(null);
+        setMousePos(null);
+      };
+
+      canvas.addEventListener("mousemove", handleMouseMove);
+      canvas.addEventListener("mouseleave", handleMouseLeave);
+
+      return () => {
+        canvas.removeEventListener("mousemove", handleMouseMove);
+        canvas.removeEventListener("mouseleave", handleMouseLeave);
+      };
+    }, []);
 
     useEffect(() => {
       const canvas = canvasRef.current!;
@@ -365,6 +501,20 @@ function App() {
       const harmonics = spectrum.slice(0, 16);
       const barWidth = (width - paddingLeft - paddingRight) / harmonics.length;
 
+      // Detect which bar is being hovered
+      let detectedHover: number | null = null;
+      if (mousePos) {
+        harmonics.forEach((_, i) => {
+          const x = paddingLeft + i * barWidth;
+          if (mousePos.x >= x && mousePos.x <= x + barWidth) {
+            detectedHover = i;
+          }
+        });
+      }
+      if (detectedHover !== hoveredBar) {
+        setHoveredBar(detectedHover);
+      }
+
       harmonics.forEach((s, i) => {
         const x = paddingLeft + i * barWidth;
         const db = s?.db;
@@ -393,10 +543,21 @@ function App() {
           return;
         }
 
+        // Determine if this bar is hovered
+        const isHovered = i === hoveredBar;
+
         // Bar
         ctx.fillStyle = abs(db) > -70 ? color : "#334155";
-        ctx.globalAlpha = abs(db) > -70 ? 1 : 0.3;
+        ctx.globalAlpha = isHovered ? 1 : abs(db) > -70 ? 0.8 : 0.3;
         ctx.fillRect(x + 4, y, barWidth - 8, abs(barHeight));
+
+        // Highlight hovered bar with border
+        if (isHovered) {
+          ctx.strokeStyle = "#ffffff";
+          ctx.lineWidth = 2;
+          ctx.strokeRect(x + 4, y, barWidth - 8, abs(barHeight));
+        }
+
         ctx.globalAlpha = 1;
 
         // Harmonic number label
@@ -427,14 +588,61 @@ function App() {
       ctx.fillText("0 dB", width - 5, axisY + 5);
       ctx.fillText(`+${maxDb}`, width - 5, paddingTop + 5);
       ctx.fillText(`${minDb}`, width - 5, paddingTop + chartHeight + 5);
-    }, [spectrum, color, height]);
+
+      // Draw tooltip for hovered bar
+      if (hoveredBar !== null && mousePos) {
+        const s = harmonics[hoveredBar];
+        if (s && s.db != null && isFinite(s.db)) {
+          const tooltipText = `H${s.harmonic}: ${s.db.toFixed(2)} dBFS`;
+          const tooltipMag = `Mag: ${s.magnitude.toFixed(4)}`;
+
+          // Measure text for tooltip background
+          ctx.font = "14px sans-serif";
+          const textWidth = max(
+            ctx.measureText(tooltipText).width,
+            ctx.measureText(tooltipMag).width,
+          );
+          const tooltipWidth = textWidth + 20;
+          const tooltipHeight = 50;
+
+          // Position tooltip near mouse, but keep it in bounds
+          let tooltipX = mousePos.x + 15;
+          let tooltipY = mousePos.y - 10;
+
+          if (tooltipX + tooltipWidth > width - 10) {
+            tooltipX = mousePos.x - tooltipWidth - 15;
+          }
+          if (tooltipY < 10) {
+            tooltipY = 10;
+          }
+          if (tooltipY + tooltipHeight > h - 10) {
+            tooltipY = h - tooltipHeight - 10;
+          }
+
+          // Draw tooltip background
+          ctx.fillStyle = "rgba(15, 23, 42, 0.95)";
+          ctx.strokeStyle = color;
+          ctx.lineWidth = 2;
+          ctx.fillRect(tooltipX, tooltipY, tooltipWidth, tooltipHeight);
+          ctx.strokeRect(tooltipX, tooltipY, tooltipWidth, tooltipHeight);
+
+          // Draw tooltip text
+          ctx.fillStyle = "#ffffff";
+          ctx.textAlign = "left";
+          ctx.fillText(tooltipText, tooltipX + 10, tooltipY + 22);
+          ctx.fillStyle = "#94a3b8";
+          ctx.font = "12px sans-serif";
+          ctx.fillText(tooltipMag, tooltipX + 10, tooltipY + 38);
+        }
+      }
+    }, [spectrum, color, height, hoveredBar, mousePos]);
 
     return (
       <canvas
         ref={canvasRef}
         width={1000}
         height={height}
-        className="rounded-lg w-full"
+        className="rounded-lg w-full cursor-pointer"
       />
     );
   }
@@ -471,6 +679,7 @@ function App() {
       "softArctan",
     ]);
     const [drive, setDrive] = useState(1);
+    const [knee, setKnee] = useState(0);
 
     const colors = [
       "#3b82f6",
@@ -492,21 +701,21 @@ function App() {
 
     // Generate original unclipped sine wave
     const originalWaveform = useMemo(() => {
-      return generateWaveform(clippers.none.fn, 1024, 6, drive);
-    }, [drive]);
+      return generateWaveform(clippers.none.fn, 1024, 6, drive, knee);
+    }, [drive, knee]);
     const baselineWaveform = generateWaveform(baseline.fn, 1024, 6, drive);
     const waveforms = useMemo(() => {
       const results = selectedClippers.map((key) => {
         const waveform = generateWaveform(clippers[key].fn, 1024, 6, drive);
         const spectrum = computeSpectrum(waveform);
-        const residualRMS = computeRootMeanSquare(
-          computeResidual(waveform, baselineWaveform),
-        );
+        const distortion = computeResidual(waveform, baselineWaveform);
+        const residualRMS = computeRootMeanSquare(distortion);
 
         return {
           key,
           data: waveform,
           spectrum,
+          distortion,
           residualRMS,
           clipper: clippers[key],
         };
@@ -546,7 +755,28 @@ function App() {
               className="w-80 accent-blue-500"
             />
           </div>
-
+          <div className="mb-6 bg-slate-900 rounded-lg p-4 inline-block">
+            <label className="block text-sm text-slate-400 mb-2">
+              Soft knee:{" "}
+              <span className="text-white font-mono">{knee.toFixed(2)}×</span>
+              <span className="text-slate-500 ml-2">
+                {knee < 1.1
+                  ? "(minimal distortion)"
+                  : knee < 2
+                    ? "(moderate)"
+                    : "(heavy distortion)"}
+              </span>
+            </label>
+            <input
+              type="range"
+              min="0.01"
+              step="0.01"
+              max="1"
+              value={knee}
+              onChange={(e) => setKnee(parseFloat(e.target.value))}
+              className="w-80 accent-blue-500"
+            />
+          </div>
           <div className="mb-6">
             <p className="text-sm text-slate-400 mb-2">
               Select clipping types:
@@ -569,74 +799,78 @@ function App() {
           </div>
 
           <div className="space-y-4">
-            {waveforms.map(({ key, data, spectrum, clipper }, i) => (
-              <div
-                key={key}
-                className="bg-slate-900/50 rounded-xl p-4 border border-slate-800"
-              >
-                <div className="flex items-center gap-3 mb-3">
-                  <span
-                    className="w-3 h-3 rounded-full"
-                    style={{ backgroundColor: colors[i % colors.length] }}
-                  />
-                  <span className="font-semibold">{clipper.name}</span>
-                  <span className="text-sm text-slate-500">{clipper.desc}</span>
-                </div>
-
-                <div className="grid grid-cols-[250px_1fr] gap-4">
-                  <div>
-                    <p className="text-xs text-slate-500 mb-1">
-                      Transfer Function
-                    </p>
-                    <TransferCurve
-                      clipFn={clipper.fn}
-                      drive={drive}
-                      color={colors[i % colors.length]}
+            {waveforms.map(
+              (
+                { key, data, distortion, residualRMS, spectrum, clipper },
+                i,
+              ) => (
+                <div
+                  key={key}
+                  className="bg-slate-900/50 rounded-xl p-4 border border-slate-800"
+                >
+                  <div className="flex items-center gap-3 mb-3">
+                    <span
+                      className="w-3 h-3 rounded-full"
+                      style={{ backgroundColor: colors[i % colors.length] }}
                     />
+                    <span className="font-semibold">{clipper.name}</span>
+                    <span className="text-sm text-slate-500">
+                      {clipper.desc}
+                    </span>
                   </div>
 
+                  <div className="grid grid-cols-[250px_1fr] gap-4">
+                    <div>
+                      <p className="text-xs text-slate-500 mb-1">
+                        Transfer Function
+                      </p>
+                      <TransferCurve
+                        clipFn={clipper.fn}
+                        drive={drive}
+                        color={colors[i % colors.length]}
+                      />
+                    </div>
+                    <div>
+                      <p className="text-xs text-slate-500 mb-1">
+                        Waveform (6 cycles)
+                      </p>
+                      <WaveformCanvas
+                        data={data}
+                        referenceData={originalWaveform}
+                        color={colors[i % colors.length]}
+                        height={250}
+                      />
+                    </div>
+                  </div>
                   <div>
-                    <p className="text-xs text-slate-500 mb-1">
-                      Waveform (6 cycles)
-                    </p>
+                    <p className="text-xs text-slate-500 mb-1">Distortion</p>
                     <WaveformCanvas
-                      data={data}
+                      data={distortion}
                       referenceData={originalWaveform}
                       color={colors[i % colors.length]}
                       height={250}
                     />
                   </div>
-                </div>
-                <div className="mt-4">
-                  <p className="text-xs text-slate-500 mb-1">
-                    Residual harmonics
-                  </p>
-                  <HarmonicBars
-                    spectrum={spectrum}
-                    color={colors[i % colors.length]}
-                    height={240}
-                  />
-                </div>
+                  <div className="mt-4">
+                    <p className="text-xs text-slate-500 mb-1">
+                      Harmonic Content
+                    </p>
+                    <HarmonicBars
+                      spectrum={spectrum}
+                      color={colors[i % colors.length]}
+                      height={240}
+                    />
+                  </div>
 
-                <div className="mt-4">
-                  <p className="text-xs text-slate-500 mb-1">
-                    Harmonic Content
-                  </p>
-                  <HarmonicBars
-                    spectrum={spectrum}
-                    color={colors[i % colors.length]}
-                    height={240}
-                  />
+                  <div className="mt-3 pt-3 border-t border-slate-800">
+                    <HarmonicTable
+                      spectrum={spectrum}
+                      color={colors[i % colors.length]}
+                    />
+                  </div>
                 </div>
-
-                <div className="mt-3 pt-3 border-t border-slate-800">
-                  <HarmonicTable
-                    spectrum={spectrum}
-                    color={colors[i % colors.length]}
-                  />
-                </div>
-              </div>
-            ))}
+              ),
+            )}
           </div>
         </div>
       </div>
